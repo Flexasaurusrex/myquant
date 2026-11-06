@@ -24,8 +24,8 @@
   --pink: #ff7ad9;
 
   --radius: 22px;
-  --font-display: system-ui;
-  --font-mono: ui-monospace;
+  --font-display: "Bricolage Grotesque";
+  --font-mono: "JetBrains Mono";
 }
 
 @media (prefers-color-scheme: dark) {
