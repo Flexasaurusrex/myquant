@@ -276,3 +276,10 @@ select.search { flex: 0 1 auto; appearance: none; padding-right: 16px; font-weig
 .search-wrap { position: relative; flex: 1 1 220px; min-width: 0; display: flex; }
 .search-wrap .search { flex: 1; padding-right: 44px; }
 .search-wrap .go { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); border: 0; background: var(--pop); color: #fff; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; }
+
+/* ---------- heat ---------- */
+.heat { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 800; padding: 2px 8px 2px 6px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--card); letter-spacing: -0.04em; }
+.heat b { letter-spacing: 0; font-family: var(--font-mono), monospace; }
+.heat.h4, .heat.h5 { background: linear-gradient(90deg, #ffb020, #ff5c6c); color: #2a0606; border-color: #2a0606; }
+.heat.h3 { background: color-mix(in srgb, #ffb020 35%, var(--card)); }
+.heat-why { padding: 0 16px 10px; margin-top: -4px; font-size: 12px; font-weight: 700; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

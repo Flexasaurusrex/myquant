@@ -2,6 +2,7 @@
 import Link from "next/link";
 import type { CardMarket } from "@/app/api/tokens/route";
 import type { CardSafety } from "@/app/api/safety/route";
+import type { Heat } from "@/lib/heat";
 import { age, hueFor, pctStr, price, usd, TIER_COPY, VIBE_EMOJI } from "@/lib/format";
 
 export function Avatar({ src, symbol, size }: { src: string | null; symbol: string; size?: number }) {
@@ -14,7 +15,7 @@ export function Avatar({ src, symbol, size }: { src: string | null; symbol: stri
   );
 }
 
-export default function TokenCard({ t, s }: { t: CardMarket; s?: CardSafety }) {
+export default function TokenCard({ t, s, heat }: { t: CardMarket; s?: CardSafety; heat?: Heat }) {
   const tier = !s || s.pending ? "scanning" : s.tier;
   const copy = TIER_COPY[tier];
   const whale = s?.whales?.top10 ?? null;
@@ -34,12 +35,16 @@ export default function TokenCard({ t, s }: { t: CardMarket; s?: CardSafety }) {
         </div>
       </div>
 
-      {(isNew || t.feeds.includes("trending")) && (
-        <div className="badges" style={{ marginBottom: 10 }}>
-          {t.feeds.includes("trending") && <span className="badge hot">Trending</span>}
-          {isNew && <span className="badge new">New</span>}
-        </div>
-      )}
+      <div className="badges" style={{ marginBottom: 10 }}>
+        {heat && (
+          <span className={`heat h${heat.flames}`} title={heat.reasons.join(" · ") || "Not much happening right now"}>
+            {"🔥".repeat(heat.flames)} <b>{heat.score}</b>
+          </span>
+        )}
+        {t.feeds.includes("trending") && <span className="badge hot">Trending</span>}
+        {isNew && <span className="badge new">New</span>}
+      </div>
+      {heat && heat.reasons[0] && <div className="heat-why">{heat.reasons[0]}</div>}
 
       <div className={`verdict t-${tier}`}>
         <div>

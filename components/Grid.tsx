@@ -5,10 +5,11 @@ import { useRouter } from "next/navigation";
 import type { CardMarket } from "@/app/api/tokens/route";
 import type { CardSafety } from "@/app/api/safety/route";
 import TokenCard from "./TokenCard";
+import { computeHeat, type Heat, type HeatSignal } from "@/lib/heat";
 import { usd } from "@/lib/format";
 
 type Tab = "trending" | "top" | "new" | "all";
-type Sort = "default" | "safety" | "volume" | "gainers" | "vibe" | "liquidity";
+type Sort = "default" | "heat" | "safety" | "volume" | "gainers" | "vibe" | "liquidity";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -16,6 +17,7 @@ export default function Grid() {
   const router = useRouter();
   const [tokens, setTokens] = useState<CardMarket[] | null>(null);
   const [safety, setSafety] = useState<Record<string, CardSafety>>({});
+  const [signals, setSignals] = useState<Record<string, HeatSignal>>({});
   const [tab, setTab] = useState<Tab>("trending");
   const [sort, setSort] = useState<Sort>("default");
   const [safeOnly, setSafeOnly] = useState(false);
@@ -36,6 +38,7 @@ export default function Grid() {
         if (alive) {
           // Server ships a ready-made safety snapshot, so most cards arrive already scored.
           if (j.safety) setSafety((prev) => ({ ...j.safety, ...Object.fromEntries(Object.entries(prev).filter(([, v]) => !v.pending)) }));
+          if (j.heat && Object.keys(j.heat).length) setSignals(j.heat);
           setTokens(j.tokens);
           setError(false);
         }
@@ -76,19 +79,30 @@ export default function Grid() {
     return () => { alive = false; };
   }, [tokens]);
 
+  // Heat is recomputed here so a danger verdict arriving late drops the token immediately.
+  const heat = useMemo(() => {
+    const out: Record<string, Heat> = {};
+    for (const t of tokens ?? []) out[t.address] = computeHeat({ ...t, trending: t.feeds.includes("trending") }, safety[t.address]?.pending ? undefined : safety[t.address]?.tier, signals[t.address]);
+    return out;
+  }, [tokens, safety, signals]);
+
   const shown = useMemo(() => {
     if (!tokens) return [];
     const needle = q.trim().toLowerCase();
     let list = tokens.filter((t) => {
       if (tab === "new" && Date.now() - new Date(t.createdAt).getTime() > 7 * 86_400_000) return false;
-      if (tab === "trending" && !t.feeds.includes("trending")) return false;
+      if (tab === "trending" && (heat[t.address].hidden || heat[t.address].score < 35) && !needle) return false;
       if (tab === "top" && !t.feeds.includes("top")) return false;
       if (safeOnly && safety[t.address]?.tier !== "safe") return false;
       if (needle && !`${t.symbol} ${t.name} ${t.address}`.toLowerCase().includes(needle)) return false;
       return true;
     });
     const by: Record<Sort, (a: CardMarket, b: CardMarket) => number> = {
-      default: (a, b) => (tab === "new" ? +new Date(b.createdAt) - +new Date(a.createdAt) : b.vol24 - a.vol24),
+      default: (a, b) =>
+        tab === "new" ? +new Date(b.createdAt) - +new Date(a.createdAt)
+        : tab === "trending" ? heat[b.address].score - heat[a.address].score
+        : b.vol24 - a.vol24,
+      heat: (a, b) => heat[b.address].score - heat[a.address].score,
       safety: (a, b) => (safety[b.address]?.score ?? -1) - (safety[a.address]?.score ?? -1),
       volume: (a, b) => b.vol24 - a.vol24,
       gainers: (a, b) => b.change24 - a.change24,
@@ -97,7 +111,7 @@ export default function Grid() {
     };
     list = [...list].sort(by[sort]);
     return list;
-  }, [tokens, safety, tab, sort, safeOnly, q]);
+  }, [tokens, safety, heat, tab, sort, safeOnly, q]);
 
   const stats = useMemo(() => {
     const vals = Object.values(safety).filter((s) => !s.pending);
@@ -142,6 +156,7 @@ export default function Grid() {
         <button className="toggle" aria-pressed={safeOnly} onClick={() => setSafeOnly((v) => !v)}>🛡️ Safe only</button>
         <select className="search" value={sort} onChange={(e) => setSort(e.target.value as Sort)} aria-label="Sort">
           <option value="default">Sort: default</option>
+          <option value="heat">Hottest first</option>
           <option value="safety">Safest first</option>
           <option value="volume">Most volume</option>
           <option value="gainers">Biggest gainers</option>
@@ -172,7 +187,7 @@ export default function Grid() {
 
       <div className="grid">
         {!tokens && !error && Array.from({ length: 8 }, (_, i) => <div key={i} className="skeleton" />)}
-        {shown.map((t) => <TokenCard key={t.address} t={t} s={safety[t.address]} />)}
+        {shown.map((t) => <TokenCard key={t.address} t={t} s={safety[t.address]} heat={heat[t.address]} />)}
       </div>
       {error && !tokens && <div className="empty">Couldn&apos;t reach the market feed. Retrying…</div>}
       {tokens && shown.length === 0 && (
