@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Avatar } from "./TokenCard";
+import Scanning, { PanelLoading } from "./Scanning";
 import { ago, age, pctStr, price, short, usd, TIER_COPY, VIBE_EMOJI } from "@/lib/format";
 import type { InsiderReport, InsiderWallet } from "@/lib/insiders";
 import { EXPLORER } from "@/lib/chain";
@@ -56,7 +57,7 @@ function InsiderPanel({ address }: { address: string }) {
     <section className="panel wide">
       <h2>🕵️ Insiders</h2>
       <p className="hint">Who got in first, who got tokens for free, and whether they&apos;re still holding. Rebuilt from on-chain transfers in the token&apos;s first 10 minutes.</p>
-      {!r && !err && <div className="t-scanning" style={{ borderRadius: 14, padding: 16, fontWeight: 800 }}>Tracing launch wallets… (takes a few seconds)</div>}
+      {!r && !err && <PanelLoading label="Tracing launch wallets… this takes a few seconds" />}
       {err && <p className="hint">Insider scan is busy right now. Refresh in a minute.</p>}
       {r && (
         <>
@@ -98,11 +99,58 @@ function InsiderPanel({ address }: { address: string }) {
   );
 }
 
+function WhaleFlowPanel({ address }: { address: string }) {
+  const [f, setF] = useState<any>(null);
+  const [err, setErr] = useState(false);
+  const [showMoves, setShowMoves] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    const load = () => fetch(`/api/token/${address}/whales`).then((x) => (x.ok ? x.json() : Promise.reject())).then((j) => alive && setF(j)).catch(() => alive && setErr(true));
+    load();
+    const id = setInterval(load, 90_000);
+    return () => { alive = false; clearInterval(id); };
+  }, [address]);
+  const moves = ((f?.moves ?? []) as any[]).filter((x) => showMoves || x.side !== "move");
+  const flowTotal = f ? f.buyUsd + f.sellUsd : 0;
+  return (
+    <section className="panel">
+      <h2>🌊 Whale flow</h2>
+      <p className="hint">
+        Big trades (≥ $2.5K or ≥ 0.25% of supply){f ? ` in the last ${f.hours || "few"}h` : ""}. Bots that flip back and forth are filtered out.
+      </p>
+      {!f && !err && <PanelLoading label="Following the whales…" />}
+      {err && !f && <p className="hint">Whale feed is busy right now. It&apos;ll retry shortly.</p>}
+      {f && (
+        <>
+          <div className="flow">
+            <div className="in"><small>Whales bought</small><b className="mono">{usd(f.buyUsd)}</b></div>
+            <div className="out"><small>Whales sold</small><b className="mono">{usd(f.sellUsd)}</b></div>
+          </div>
+          {flowTotal > 0 && (
+            <div className="bar" style={{ height: 14, marginBottom: 14 }}><i style={{ width: `${(f.buyUsd / flowTotal) * 100}%` }} /></div>
+          )}
+          <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, fontWeight: 700, marginBottom: 10 }}>
+            <input type="checkbox" checked={showMoves} onChange={(e) => setShowMoves(e.target.checked)} /> Show wallet-to-wallet transfers
+          </label>
+          <div className="moves">
+            {moves.length === 0 && <p className="hint">No whale-sized trades in this window.</p>}
+            {moves.map((x: any) => (
+              <a key={x.hash + x.wallet} className="move" href={`${EXPLORER}/tx/${x.hash}`} target="_blank" rel="noreferrer">
+                <span className={`side ${x.side}`}>{x.side === "move" ? "xfer" : x.side}</span>
+                <span className="who mono">{short(x.wallet)} · {ago(x.ts)}</span>
+                <span className="amt mono">{usd(x.usd)}<small>{x.pctSupply < 0.01 ? "<0.01" : x.pctSupply.toFixed(2)}% supply</small></span>
+              </a>
+            ))}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 export default function TokenDetail({ address }: { address: string }) {
   const [d, setD] = useState<Detail | null>(null);
   const [err, setErr] = useState("");
-  const [showMoves, setShowMoves] = useState(false);
-
   useEffect(() => {
     let alive = true;
     const load = () =>
@@ -116,13 +164,11 @@ export default function TokenDetail({ address }: { address: string }) {
   }, [address]);
 
   if (err) return (<><Link href="/" className="back">← All tokens</Link><div className="empty">{err}</div></>);
-  if (!d) return (<><Link href="/" className="back">← All tokens</Link><div className="skeleton" style={{ height: 420 }} /></>);
+  if (!d) return (<><Link href="/" className="back">← All tokens</Link><Scanning address={address} steps={["Reading the contract…", "Checking for honeypots and hidden taxes…", "Measuring liquidity…", "Counting buyers and sellers…", "Mapping the top holders…"]} /></>);
 
   const m = d.market;
   const tier = d.safety.tier as string;
   const tf = m ? (["h1", "h6", "h24"] as const).map((k) => ({ k, ...m.tx[k] })) : [];
-  const moves = (d.whaleFlow.moves as any[]).filter((x) => showMoves || x.side !== "move");
-  const flowTotal = d.whaleFlow.buyUsd + d.whaleFlow.sellUsd;
 
   return (
     <>
@@ -226,33 +272,7 @@ export default function TokenDetail({ address }: { address: string }) {
           ) : <p className="hint">No holder data yet.</p>}
         </section>
 
-        <section className="panel">
-          <h2>🌊 Whale flow</h2>
-          <p className="hint">
-            Big trades (≥ $2.5K or ≥ 0.25% of supply) in the last {d.whaleFlow.hours || "few"}h. Bots that flip back and forth are filtered out.
-          </p>
-          <div className="flow">
-            <div className="in"><small>Whales bought</small><b className="mono">{usd(d.whaleFlow.buyUsd)}</b></div>
-            <div className="out"><small>Whales sold</small><b className="mono">{usd(d.whaleFlow.sellUsd)}</b></div>
-          </div>
-          {flowTotal > 0 && (
-            <div className="bar" style={{ height: 14, marginBottom: 14 }}><i style={{ width: `${(d.whaleFlow.buyUsd / flowTotal) * 100}%` }} /></div>
-          )}
-          <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, fontWeight: 700, marginBottom: 10 }}>
-            <input type="checkbox" checked={showMoves} onChange={(e) => setShowMoves(e.target.checked)} /> Show wallet-to-wallet transfers
-          </label>
-          <div className="moves">
-            {moves.length === 0 && <p className="hint">No whale-sized trades in this window.</p>}
-            {moves.map((x: any) => (
-              <a key={x.hash + x.wallet} className="move" href={`${EXPLORER}/tx/${x.hash}`} target="_blank" rel="noreferrer">
-                <span className={`side ${x.side}`}>{x.side === "move" ? "xfer" : x.side}</span>
-                <span className="who mono">{short(x.wallet)} · {ago(x.ts)}</span>
-                <span className="amt mono">{usd(x.usd)}<small>{x.pctSupply < 0.01 ? "<0.01" : x.pctSupply.toFixed(2)}% supply</small></span>
-              </a>
-            ))}
-          </div>
-          {d.whaleFlow.source === "public-rpc" && <p className="hint" style={{ marginTop: 10 }}>Running on the public RPC. Add an Alchemy key for longer history.</p>}
-        </section>
+        <WhaleFlowPanel address={address} />
 
         <InsiderPanel address={address} />
       </div>

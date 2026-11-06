@@ -258,3 +258,21 @@ select.search { flex: 0 1 auto; appearance: none; padding-right: 16px; font-weig
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ---------- loading ---------- */
+.spinner { display: inline-block; flex: none; border-radius: 50%; border: 2.5px solid color-mix(in srgb, currentColor 25%, transparent); border-top-color: currentColor; animation: spin 0.7s linear infinite; vertical-align: -3px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.scanning { display: flex; gap: 22px; align-items: center; background: var(--card); border: 2px solid var(--line); border-radius: var(--radius); box-shadow: 5px 5px 0 var(--shadow); padding: 24px; flex-wrap: wrap; }
+.scanning b { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; }
+.scan-addr { color: var(--ink-3); font-size: 13px; overflow-wrap: anywhere; margin-top: 2px; }
+.scanning ul { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 6px; font-weight: 600; font-size: 15px; }
+.scanning li { color: var(--ink-3); display: flex; gap: 8px; align-items: center; }
+.scanning li.now { color: var(--ink); }
+.scanning li.done { color: var(--bull); }
+.radar { width: 96px; height: 96px; border-radius: 50%; flex: none; position: relative; border: 2px solid var(--line);
+  background: radial-gradient(circle, transparent 30%, color-mix(in srgb, var(--safe) 12%, transparent) 31%, transparent 32%, transparent 60%, color-mix(in srgb, var(--safe) 12%, transparent) 61%, transparent 62%), color-mix(in srgb, var(--safe) 8%, var(--card)); overflow: hidden; }
+.radar i { position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(from 0deg, color-mix(in srgb, var(--safe) 70%, transparent), transparent 25%); animation: spin 1.4s linear infinite; }
+.panel-loading { display: flex; gap: 10px; align-items: center; padding: 16px; border-radius: 14px; border: 1.5px dashed var(--line); font-weight: 700; color: var(--ink-2); }
+.search-wrap { position: relative; flex: 1 1 220px; min-width: 0; display: flex; }
+.search-wrap .search { flex: 1; padding-right: 44px; }
+.search-wrap .go { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); border: 0; background: var(--pop); color: #fff; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; }

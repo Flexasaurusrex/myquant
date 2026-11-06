@@ -213,8 +213,8 @@ export async function goplus(address: string): Promise<GoPlus> {
   }
 }
 
-export async function goplusMany(addresses: string[]) {
-  const res = await pool(addresses, 2, goplus);
+export async function goplusMany(addresses: string[], limit = 3) {
+  const res = await pool(addresses, limit, goplus);
   return new Map(addresses.map((a, i) => [a, res[i]]));
 }
 

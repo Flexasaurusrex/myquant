@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { Spinner } from "./Scanning";
 import { useRouter } from "next/navigation";
 import type { CardMarket } from "@/app/api/tokens/route";
 import type { CardSafety } from "@/app/api/safety/route";
@@ -20,6 +21,8 @@ export default function Grid() {
   const [safeOnly, setSafeOnly] = useState(false);
   const [q, setQ] = useState("");
   const [error, setError] = useState(false);
+  const [navigating, startNav] = useTransition();
+  const [hint, setHint] = useState("");
   const safetyRef = useRef(safety);
   safetyRef.current = safety;
 
@@ -30,7 +33,12 @@ export default function Grid() {
       try {
         const r = await fetch("/api/tokens");
         const j = await r.json();
-        if (alive) { setTokens(j.tokens); setError(false); }
+        if (alive) {
+          // Server ships a ready-made safety snapshot, so most cards arrive already scored.
+          if (j.safety) setSafety((prev) => ({ ...j.safety, ...Object.fromEntries(Object.entries(prev).filter(([, v]) => !v.pending)) }));
+          setTokens(j.tokens);
+          setError(false);
+        }
       } catch {
         if (alive) setError(true);
       }
@@ -40,23 +48,29 @@ export default function Grid() {
     return () => { alive = false; clearInterval(id); };
   }, []);
 
-  // Safety scans stream in a few at a time (the scanner is rate limited), retrying busy ones.
+  // Anything the snapshot didn't cover gets scanned live: batches of 8, two requests in flight.
   useEffect(() => {
     if (!tokens) return;
     let alive = true;
     (async () => {
+      await sleep(50); // let the snapshot state land first
       for (let round = 0; round < 6 && alive; round++) {
         const todo = tokens.map((t) => t.address).filter((a) => !safetyRef.current[a] || safetyRef.current[a].pending);
         if (!todo.length) break;
-        for (let i = 0; i < todo.length && alive; i += 4) {
-          try {
-            const r = await fetch(`/api/safety?a=${todo.slice(i, i + 4).join(",")}`);
-            const j = (await r.json()) as Record<string, CardSafety>;
-            if (alive) setSafety((prev) => ({ ...prev, ...j }));
-          } catch { /* next round */ }
-          await sleep(400);
-        }
-        await sleep(8_000);
+        const batches: string[][] = [];
+        for (let i = 0; i < todo.length; i += 8) batches.push(todo.slice(i, i + 8));
+        let next = 0;
+        await Promise.all([0, 1].map(async () => {
+          while (alive && next < batches.length) {
+            const batch = batches[next++];
+            try {
+              const r = await fetch(`/api/safety?a=${batch.join(",")}`);
+              const j = (await r.json()) as Record<string, CardSafety>;
+              if (alive) setSafety((prev) => ({ ...prev, ...j }));
+            } catch { /* next round */ }
+          }
+        }));
+        await sleep(4_000);
       }
     })();
     return () => { alive = false; };
@@ -99,8 +113,16 @@ export default function Grid() {
   const onSearch = (e: React.FormEvent) => {
     e.preventDefault();
     const v = q.trim();
-    if (/^0x[0-9a-fA-F]{40}$/.test(v)) router.push(`/token/${v.toLowerCase()}`);
+    if (/^0x[0-9a-fA-F]{40}$/.test(v)) {
+      setHint("");
+      startNav(() => router.push(`/token/${v.toLowerCase()}`));
+    } else if (v.startsWith("0x")) {
+      setHint("That address looks incomplete. Token addresses are 0x + 40 characters.");
+    } else if (shown.length === 1) {
+      startNav(() => router.push(`/token/${shown[0].address}`));
+    }
   };
+  const isAddr = /^0x[0-9a-fA-F]{40}$/.test(q.trim());
 
   return (
     <>
@@ -126,11 +148,22 @@ export default function Grid() {
           <option value="vibe">Best vibes</option>
           <option value="liquidity">Deepest liquidity</option>
         </select>
-        <form onSubmit={onSearch} style={{ display: "contents" }}>
-          <input className="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search or paste a token address…" aria-label="Search tokens" />
+        <form onSubmit={onSearch} className="search-wrap" role="search">
+          <input className="search" value={q} onChange={(e) => { setQ(e.target.value); setHint(""); }} placeholder="Search or paste a token address…" aria-label="Search tokens" disabled={navigating} />
+          {(navigating || isAddr) && (
+            <button type="submit" className="go" aria-label={navigating ? "Loading token" : "Scan this token"} disabled={navigating}>
+              {navigating ? <Spinner size={16} /> : "→"}
+            </button>
+          )}
         </form>
       </div>
 
+      {navigating && (
+        <p style={{ margin: "-6px 0 14px", fontSize: 14, fontWeight: 700, display: "flex", gap: 8, alignItems: "center" }}>
+          <Spinner size={14} /> Opening token scan…
+        </p>
+      )}
+      {hint && <p style={{ margin: "-6px 0 14px", fontSize: 14, fontWeight: 700, color: "var(--bear)" }}>{hint}</p>}
       {tokens && stats.scanned < stats.tokens && (
         <p style={{ margin: "-6px 0 14px", fontSize: 13, color: "var(--ink-3)", fontWeight: 600 }}>
           Safety scans: {stats.scanned}/{stats.tokens} done…
